@@ -1,0 +1,14 @@
+node_modules/
+web/node_modules/
+web/dist/
+data/
+.env
+config/agent-monitor.json
+build/
+dist/
+*.exe
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+.venv/
+.env.*

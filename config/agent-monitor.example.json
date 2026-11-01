@@ -1,0 +1,19 @@
+{
+  "port": 4317,
+  "billingMode": "subscription",
+  "defaultModel": "sonnet",
+  "allowedRoots": ["C:/Users/joets/VS Code Dev"],
+  "staleAfterMs": 300000,
+  "readTranscriptUsage": true,
+  "codex": {
+    "enabled": true,
+    "pollIntervalMs": 1000,
+    "lookbackDays": 2,
+    "maxFiles": 40
+  },
+  "pricing": {
+    "asOf": null,
+    "note": "Fill in per-million-token rates from the official pricing page. Keys are model id prefixes. Leave empty to show cost as Unknown for hook-observed sessions.",
+    "models": {}
+  }
+}
