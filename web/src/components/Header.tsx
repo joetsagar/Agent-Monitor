@@ -14,6 +14,7 @@ function ConnBadge({ conn, last }: { conn: ConnState; last: number | null }) {
 export function Header(props: {
   scope: Scope; setScope: (s: Scope) => void;
   clearableCount: number; clearedCount: number; onClearFinished: () => void; onShowCleared: () => void;
+  archiving: boolean;
   conn: ConnState; lastMessageAt: number | null; bootError: string | null;
   requestsOpen: boolean; onToggleRequests: () => void;
 }) {
@@ -36,14 +37,18 @@ export function Header(props: {
           </select>
         </label>
         <div className="toolbar-actions">
-          <button type="button" className="btn small" disabled={props.clearableCount === 0} onClick={props.onClearFinished}
-            title="Hide finished sessions in this browser; history is preserved and new activity brings them back.">Clear finished ({props.clearableCount})</button>
+          <button type="button" className="btn small" disabled={props.archiving || props.clearableCount === 0} onClick={props.onClearFinished}
+            title="Save full conversation text to Obsidian, then close the associated VS Code tab while keeping history. Only successful sessions are cleared.">{props.archiving ? "Saving and closing..." : `Clear finished (${props.clearableCount})`}</button>
           {props.clearedCount > 0 && <button type="button" className="btn small" onClick={props.onShowCleared}>Show cleared ({props.clearedCount})</button>}
         </div>
       </div>
       {bootError && <div className="callout failed small" role="alert">Cannot reach the backend: {bootError}. Retrying…</div>}
       <div className="top-compact small">
         <ConnBadge conn={conn} last={lastMessageAt} />
+        {state.server?.kilo && <span className={`badge ${state.server.kilo.status === "watching" ? "st-ok" : "st-neutral"}`}
+          title={state.server.kilo.error ?? `Read-only Kilo CLI observer; ${state.server.kilo.sessionsTracked} sessions tracked. Questions and approvals stay in Kilo.`}>
+          Kilo: {state.server.kilo.status}
+        </span>}
         {state.server?.codex && <span className={`badge ${state.server.codex.status === "watching" ? "st-ok" : "st-neutral"}`}
           title={state.server.codex.error ?? `Read-only Codex observer; ${state.server.codex.filesTracked} log files tracked. Questions and approvals stay in Codex.`}>
           Codex: {state.server.codex.status}

@@ -4,6 +4,7 @@ import type { WidgetUsageSnapshot, WidgetUsageProvider, WidgetUsageRow } from ".
 import { fetchWidgetUsage, refreshWidgetUsage } from "../api";
 import { useApp } from "../ctx";
 import { useNow } from "../util";
+import { setExchangeRate } from "../currency";
 
 function resetLabel(value: string | null, now: number): string {
   if (!value) return "Reset time unavailable";
@@ -18,7 +19,7 @@ function resetLabel(value: string | null, now: number): string {
   return `Resets in ${hours ? `${hours}h ` : ""}${minutes}m`;
 }
 
-function UsageRow({ row, stale, now }: { row: WidgetUsageRow; stale: boolean; now: number }) {
+function UsageRow({ row, stale, now, showCredits }: { row: WidgetUsageRow; stale: boolean; now: number; showCredits: boolean }) {
   const percent = typeof row.percent === "number" && Number.isFinite(row.percent) ? Math.max(0, Math.min(100, row.percent)) : null;
   const reset = row.resetsAt ? Date.parse(row.resetsAt) : NaN;
   const elapsed = row.windowSeconds && Number.isFinite(reset)
@@ -34,13 +35,16 @@ function UsageRow({ row, stale, now }: { row: WidgetUsageRow; stale: boolean; no
     </div>}
     {percent != null && <div className="usage-reset muted" title={row.resetsAt ? new Date(row.resetsAt).toLocaleString() : undefined}>{resetLabel(row.resetsAt, now)}</div>}
     {row.tokens != null && percent == null && <div className="usage-reset muted">tokens over the last 7 days</div>}
+    {showCredits && <div className="usage-credits" title="Prepaid usage-credit balance. GBP equivalent uses the reference rate shown below.">
+      {row.credits != null ? <>Credits: £{row.credits.toFixed(2)}{(stale || row.creditsStale) && <span className="muted"> (last known)</span>}</> : "Credits: unavailable"}
+    </div>}
   </div>;
 }
 
 function Provider({ provider, now }: { provider: WidgetUsageProvider; now: number }) {
   return <section className={`usage-provider provider-${provider.id}`} aria-label={`${provider.name} usage`}>
     <div className="usage-provider-heading"><h3><ProviderLogo id={provider.id} />{provider.name}</h3>{provider.stale && <span className="usage-state">Last known</span>}</div>
-    {provider.rows.map((row, index) => <UsageRow key={`${row.label}-${index}`} row={row} stale={provider.stale} now={now} />)}
+    {provider.rows.map((row, index) => <UsageRow key={`${row.label}-${index}`} row={row} stale={provider.stale} now={now} showCredits={provider.id === "claude" && row.label === "Weekly (7 days)"} />)}
     {provider.status === "loading" && <p className="usage-message muted">Reading usage…</p>}
     {provider.status === "ok" && provider.rows.length === 0 && <p className="usage-message muted">No usage windows reported.</p>}
     {provider.error && <p className="usage-message usage-error" role="status">{provider.error}</p>}
@@ -49,11 +53,11 @@ function Provider({ provider, now }: { provider: WidgetUsageProvider; now: numbe
 
 function demoSnapshot(): WidgetUsageSnapshot {
   const now = Date.now();
-  const row = (label: string, percent: number, windowSeconds: number, remainingSeconds: number): WidgetUsageRow => ({ label, percent, tokens: null, windowSeconds, resetsAt: new Date(now + remainingSeconds * 1000).toISOString() });
-  return { updatedAt: now, refreshing: false, providers: [
-    { id: "claude", name: "Claude", status: "ok", error: null, stale: false, rows: [row("Session (5 hours)", 34, 18000, 9000), row("Weekly (7 days)", 61, 604800, 300000)] },
+  const row = (label: string, percent: number, windowSeconds: number, remainingSeconds: number): WidgetUsageRow => ({ label, percent, tokens: null, credits: null, windowSeconds, resetsAt: new Date(now + remainingSeconds * 1000).toISOString() });
+  return { updatedAt: now, refreshing: false, exchangeRate: { usdToGbp: 0.75, asOf: "2026-11-01" }, providers: [
+    { id: "claude", name: "Claude", status: "ok", error: null, stale: false, rows: [row("Session (5 hours)", 34, 18000, 9000), { ...row("Weekly (7 days)", 61, 604800, 300000), credits: 12.34 }] },
     { id: "codex", name: "Codex", status: "ok", error: null, stale: false, rows: [row("Session (5 hours)", 18, 18000, 12000), row("Weekly (7 days)", 42, 604800, 380000)] },
-    { id: "kilo", name: "Kilo Code", status: "ok", error: null, stale: false, rows: [{ label: "Tokens (7 days)", tokens: 1284500, percent: null, resetsAt: null, windowSeconds: 604800 }] },
+    { id: "kilo", name: "Kilo Code", status: "ok", error: null, stale: false, rows: [{ label: "Tokens (7 days)", tokens: 1284500, credits: null, percent: null, resetsAt: null, windowSeconds: 604800 }] },
   ] };
 }
 
@@ -63,6 +67,7 @@ export function UsageSidebar() {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const now = useNow(30_000);
+  useEffect(() => { if (snapshot?.exchangeRate) setExchangeRate(snapshot.exchangeRate); }, [snapshot?.exchangeRate]);
   useEffect(() => {
     if (demo || !boot) return;
     let cancelled = false;
@@ -97,6 +102,7 @@ export function UsageSidebar() {
       {error && <p className="usage-message usage-error" role="status">{error}</p>}
     </div>
     <footer className="usage-sidebar-footer muted">
+      <span>{snapshot?.exchangeRate ? `GBP reference rate · ${snapshot.exchangeRate.asOf}${demo ? " (demo)" : ""}` : "GBP conversion unavailable"}</span>
       <span className="usage-legend"><span aria-hidden="true">│</span> Time elapsed in each window</span>
       <span>{snapshot?.updatedAt ? `Updated ${new Date(snapshot.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Usage refreshes every 2 minutes"}</span>
       {snapshot?.updatedAt && <span>Refreshes every 2 minutes</span>}

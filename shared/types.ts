@@ -2,7 +2,16 @@
 // Runtime state, task progress, interactions and review decisions are kept
 // as separate entities; the UI derives presentation from them.
 
-export type SessionSource = "vscode-hooks" | "managed" | "codex-local";
+export type SessionSource = "vscode-hooks" | "managed" | "codex-local" | "kilo-local";
+
+export interface ArchiveResult {
+  sessionId: string;
+  lastEventAt: number;
+  archivePath: string | null;
+  closeStatus: "pending" | "closed" | "no_tab" | "no_transcript" | "not_applicable" | "unavailable" | "failed";
+  message: string;
+  jobId?: string;
+}
 
 export interface WidgetUsageRow {
   label: string;
@@ -10,6 +19,8 @@ export interface WidgetUsageRow {
   tokens: number | null;
   resetsAt: string | null;
   windowSeconds: number | null;
+  credits: number | null;
+  creditsStale?: boolean;
 }
 export interface WidgetUsageProvider {
   id: "claude" | "codex" | "kilo";
@@ -20,6 +31,7 @@ export interface WidgetUsageProvider {
   stale: boolean;
 }
 export interface WidgetUsageSnapshot {
+  exchangeRate?: { usdToGbp: number; asOf: string } | null;
   updatedAt: number | null;
   refreshing: boolean;
   providers: WidgetUsageProvider[];
@@ -251,6 +263,7 @@ export interface UsageRecord {
 }
 
 export interface ServerInfo {
+  kilo?: { enabled: boolean; status: "watching" | "unavailable" | "disabled"; sessionsTracked: number; lastScanAt: number | null; error: string | null };
   codex?: { enabled: boolean; status: "watching" | "unavailable" | "disabled"; filesTracked: number; lastScanAt: number | null; lastEventAt: number | null; error: string | null };
   startedAt: number;
   version: string;

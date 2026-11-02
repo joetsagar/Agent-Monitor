@@ -58,3 +58,29 @@ test("bridge crashes and malformed numeric payloads cannot erase good data or le
   assert.equal(clean.providers[0].rows[0].resetsAt, null);
   assert.equal(clean.providers[0].rows[0].tokens, null);
 });
+
+test("Claude weekly GBP credit balance is projected, zero is valid and last-good credit survives partial failure", async () => {
+  let payload: any = { exchangeRate: { usdToGbp: 0.75, asOf: "2026-10-30", secret: "omit" }, providers: [
+    { id: "claude", status: "ok", rows: [
+      { label: "Session (5 hours)", credits: 99 }, { label: "Weekly (7 days)", credits: 12.34, secret: "omit" },
+    ] },
+    { id: "kilo", status: "ok", rows: [{ label: "anything", tokens: 5, credits: 999 }] },
+  ] };
+  const service = new WidgetUsageService({ runner: async () => payload });
+  let state = await service.refresh();
+  assert.equal(state.providers[0].rows[0].credits, null);
+  assert.equal(state.providers[0].rows[1].credits, 12.34);
+  assert.equal(state.providers[2].rows[0].credits, null);
+  assert.deepEqual(state.exchangeRate, { usdToGbp: 0.75, asOf: "2026-10-30" });
+  assert.ok(!JSON.stringify(state).includes("omit"));
+  payload.providers[0].rows[1].credits = null;
+  payload.exchangeRate = { usdToGbp: -1, asOf: "bad" };
+  state = await service.refresh();
+  assert.equal(state.providers[0].rows[1].credits, 12.34);
+  assert.equal(state.providers[0].rows[1].creditsStale, true);
+  assert.equal(state.exchangeRate?.usdToGbp, 0.75);
+  payload.providers[0].rows[1].credits = 0;
+  state = await service.refresh();
+  assert.equal(state.providers[0].rows[1].credits, 0);
+  assert.ok(!state.providers[0].rows[1].creditsStale);
+});

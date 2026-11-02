@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatUsdInGbp } from "./currency";
 import type { Agent, AgentStatus, Interaction, UsageRecord } from "../../shared/types";
 
 export function useNow(intervalMs = 1000): number {
@@ -99,7 +100,7 @@ export function sumUsage(records: UsageRecord[]): UsageTotals {
 }
 
 export function fmtCost(n: number | null): string {
-  return n == null ? "Unknown" : `$${n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
+  return formatUsdInGbp(n);
 }
 
 export function interactionTypeLabel(i: Interaction): string {

@@ -1,10 +1,10 @@
-import { agentOf, inScope, projectName, useApp } from "../ctx";
+﻿import { agentOf, inScope, projectName, useApp } from "../ctx";
 import type { Scope } from "../ctx";
 import { interactionSummary, interactionTypeLabel, NEEDS_YOU, relTime, useNow } from "../util";
 
 export function NeedsYou({ scope }: { scope: Scope }) {
   const { state, openDrawer } = useApp();
-  const now = useNow(5000);
+  const now = useNow(500);
   const items = inScope(state.interactions, scope)
     .filter((i) => NEEDS_YOU.includes(i.status))
     .sort((a, b) => a.createdAt - b.createdAt);

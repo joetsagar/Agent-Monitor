@@ -1,0 +1,22 @@
+{
+  "name": "agent-monitor-companion",
+  "displayName": "Agent Monitor Companion",
+  "description": "Close explicitly identified conversation tabs after Agent Monitor verifies an Obsidian archive.",
+  "version": "0.1.0",
+  "publisher": "local-agent-monitor",
+  "engines": { "vscode": "^1.95.0" },
+  "main": "./extension.cjs",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      { "command": "agentMonitor.linkSessionTab", "title": "Agent Monitor: Link This Chat Tab to a Session" },
+      { "command": "agentMonitor.unlinkSessionTabs", "title": "Agent Monitor: Forget Linked Chat Tabs" }
+    ],
+    "configuration": {
+      "title": "Agent Monitor Companion",
+      "properties": {
+        "agentMonitor.root": { "type": "string", "default": "", "description": "Agent Monitor repository path. Empty discovers it beside the current workspace." }
+      }
+    }
+  }
+}

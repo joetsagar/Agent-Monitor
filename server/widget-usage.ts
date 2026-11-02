@@ -31,7 +31,7 @@ function publicRows(value: unknown, id: string): WidgetUsageRow[] {
     if (!label) throw new Error("Invalid usage window");
     const date = typeof row.resetsAt === "string" && Number.isFinite(Date.parse(row.resetsAt)) ? new Date(row.resetsAt).toISOString() : null;
     return { label, percent: id === "kilo" ? null : finite(row.percent), tokens: id === "kilo" ? finite(row.tokens) : null,
-      resetsAt: date, windowSeconds: finite(row.windowSeconds) };
+      resetsAt: date, windowSeconds: finite(row.windowSeconds), credits: id === "claude" && label === "Weekly (7 days)" ? finite(row.credits) : null };
   });
 }
 
@@ -83,11 +83,23 @@ export class WidgetUsageService {
     try {
       const payload = obj(await this.runner());
       if (!Array.isArray(payload.providers)) throw new Error("Invalid usage response");
+      const exchange = obj(payload.exchangeRate);
+      const rate = finite(exchange.usdToGbp);
+      if (rate && typeof exchange.asOf === "string" && /^\d{4}-\d{2}-\d{2}$/.test(exchange.asOf)) {
+        this.state.exchangeRate = { usdToGbp: rate, asOf: exchange.asOf };
+      }
       const providers = payload.providers.map(obj);
       this.state.providers = this.state.providers.map((previous) => {
         const incoming = providers.find((p) => p.id === previous.id);
         if (incoming?.status === "ok") {
-          try { return { ...previous, status: "ok", rows: publicRows(incoming.rows, previous.id), error: null, stale: false }; }
+          try {
+            const rows = publicRows(incoming.rows, previous.id).map((row) => {
+              const old = previous.rows.find((r) => r.label === row.label);
+              return previous.id === "claude" && row.label === "Weekly (7 days)" && row.credits === null && old?.credits != null
+                ? { ...row, credits: old.credits, creditsStale: true } : row;
+            });
+            return { ...previous, status: "ok", rows, error: null, stale: false };
+          }
           catch { /* malformed data must not erase a good last reading */ }
         }
         return { ...previous, status: "error", error: safeError(incoming?.error), stale: previous.rows.length > 0 };

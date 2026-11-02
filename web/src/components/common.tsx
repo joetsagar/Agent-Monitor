@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useExchangeRate } from "../currency";
 import type { Agent, AgentResult, Session, UsageRecord } from "../../../shared/types";
 import { copyText, fileLink, fmtCost, fmtNum, minutesSince, STATUS_LABEL, statusClass, sumUsage } from "../util";
 import { useApp } from "../ctx";
@@ -24,7 +25,7 @@ export function SourceBadge({ session }: { session: Session | undefined }) {
   if (!session) return <span className="badge st-neutral">Unknown source</span>;
   return session.source === "managed"
     ? <span className="badge st-neutral">Managed</span>
-    : <span className="badge st-neutral">{session.source === "codex-local" ? "Codex · local logs · read-only" : "VS Code via hooks"}</span>;
+    : <span className="badge st-neutral">{session.source === "kilo-local" ? "Kilo CLI read-only" : session.source === "codex-local" ? "Codex · local logs · read-only" : "VS Code via hooks"}</span>;
 }
 
 export function ModelText({ model }: { model: string | null }) {
@@ -67,6 +68,7 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
 export function CostText({ cost, basis, billingMode, unknownCount = 0 }: {
   cost: number | null; basis?: string | string[] | null; billingMode: "subscription" | "api"; unknownCount?: number;
 }) {
+  useExchangeRate();
   const b = Array.isArray(basis) ? basis.join("; ") : basis;
   if (cost == null) return <span className="muted">Unknown cost</span>;
   return (

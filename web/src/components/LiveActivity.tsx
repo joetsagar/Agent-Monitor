@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
+import { useExchangeRate } from "../currency";
 import type { Agent, EventRow, Session, UsageRecord } from "../../../shared/types";
 import { inScope, sessionOf, useApp } from "../ctx";
 import type { Scope } from "../ctx";
@@ -179,10 +180,10 @@ function SessionBlock({ session, lead, workers, now }: { session: Session | unde
           {leadFam ?? "unknown"}
           {workers.length > 0 && <> → {workers.length} × {workerFams}</>}
           {" · "}{session ? tildePath(session.cwd) : "unknown folder"}
-          {session?.source !== "managed" && <span className="stk-dim"> · {session?.source === "codex-local" ? "Codex · read-only" : "VS Code"}</span>}
+          {session?.source !== "managed" && <span className="stk-dim"> · {session?.source === "kilo-local" ? "Kilo read-only" : session?.source === "codex-local" ? "Codex · read-only" : "VS Code"}</span>}
         </span>
         <span title={(totals.basis.join("; ") || "No usage reported") + (billingMode === "subscription" ? " — API-equivalent estimate, not a subscription charge" : "")}>
-          {totals.cost == null ? <span className="stk-dim">$ unknown</span> : <>{fmtCost(totals.cost)}<span className="stk-dim"> est.</span></>}
+          {totals.cost == null ? <span className="stk-dim">£ unknown</span> : <>{fmtCost(totals.cost)}<span className="stk-dim"> est.</span></>}
         </span>
       </div>
       {lead && <Pane agent={lead} name={leadFam ?? "lead"} isLead workerCount={workers.length} tokens={agentTokens(lead, usage)} now={now} side="full" maxItems={1} />}
@@ -199,8 +200,9 @@ function SessionBlock({ session, lead, workers, now }: { session: Session | unde
 }
 
 export function LiveActivity({ scope }: { scope: Scope }) {
+  useExchangeRate();
   const { state } = useApp();
-  const now = useNow(5000);
+  const now = useNow(500);
   const agents = stableSort(inScope(state.agents, scope));
   // Only requests that block an agent keep a quiet session on screen; reviews wait on the Overview.
   const pending = new Set(state.interactions.filter((i) => i.kind !== "review" && NEEDS_YOU.includes(i.status)).map((i) => i.sessionId));

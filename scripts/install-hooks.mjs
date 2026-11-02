@@ -12,7 +12,7 @@ const args = process.argv.slice(2);
 const uninstall = args.includes("--uninstall");
 const pi = args.indexOf("--project");
 let file;
-if (args.includes("--user")) file = join(homedir(), ".claude", "settings.json");
+if (args.includes("--user")) file = process.env.AGENT_MONITOR_SETTINGS_FILE || join(homedir(), ".claude", "settings.json"); // env override is for tests
 else if (pi >= 0 && args[pi + 1]) file = join(resolve(args[pi + 1]), ".claude", "settings.local.json");
 else { console.error("Specify --user or --project <dir>"); process.exit(2); }
 
@@ -23,7 +23,13 @@ const EVENTS = ["SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", 
   "PermissionRequest", "PermissionDenied", "Notification", "SubagentStart", "SubagentStop", "Stop", "StopFailure", "TaskCompleted"];
 
 mkdirSync(dirname(file), { recursive: true });
-const settings = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+let settings = {};
+if (existsSync(file)) {
+  try { settings = JSON.parse(readFileSync(file, "utf8")); } catch (e) {
+    console.error(`Cannot parse ${file} as JSON (${e.message}). Fix or remove it, then re-run; nothing was changed.`);
+    process.exit(1);
+  }
+}
 if (existsSync(file)) {
   const backup = `${file}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   copyFileSync(file, backup);

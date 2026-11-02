@@ -135,7 +135,7 @@ export function LeadPanel({ scope }: { scope: Scope }) {
           {err && <div className="callout failed" role="alert">{err}</div>}
         </div>
       )}
-      {!managed && <div className="muted small">{session?.source === "codex-local" ? "Observed from local Codex logs: interact with this session in Codex." : "Observed via VS Code hooks: interact with this session in VS Code."}</div>}
+      {!managed && <div className="muted small">{session?.source === "kilo-local" ? "Observed from local Kilo CLI database: interact with this session in Kilo." : session?.source === "codex-local" ? "Observed from local Codex logs: interact with this session in Codex." : "Observed via VS Code hooks: interact with this session in VS Code."}</div>}
     </section>
   );
 }

@@ -25,6 +25,7 @@ type Kind = "project" | "session" | "agent" | "task" | "interaction" | "usage";
 type Listener = (m: StreamMessage) => void;
 
 const ACTIVE: Agent["status"][] = ["working", "waiting"];
+const CODEX_ABANDON_MS = 6 * 3600_000;
 
 export class Store {
   private db: DatabaseSync;
@@ -254,6 +255,12 @@ export class Store {
       const stale = a.status === "working" && now - a.lastActivityAt > this.server.staleAfterMs &&
         !(s?.source === "managed" && s.runtimeState === "running");
       if (stale !== a.stale) { a.stale = stale; this.persist("agent", a); }
+      // Codex logs never record a crashed client. After long silence treat the
+      // turn as interrupted (like Kilo) so Clear finished can archive it.
+      if (s?.source === "codex-local" && a.status === "working" && now - a.lastActivityAt > CODEX_ABANDON_MS) {
+        a.status = "cancelled"; a.stale = false; a.currentAction = "No Codex activity for 6h; treated as interrupted"; this.persist("agent", a);
+        if (s.runtimeState === "running") this.patchSession(s.id, { runtimeState: "interrupted" });
+      }
     }
   }
 

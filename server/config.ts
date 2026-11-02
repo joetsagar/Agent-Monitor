@@ -13,7 +13,9 @@ export interface PricingRate {
 }
 
 export interface Config {
-  codex?: { enabled?: boolean; sessionsDir?: string; pollIntervalMs?: number; lookbackDays?: number; maxFiles?: number };
+  archiving?: { vaultPath?: string; claudeProjectsDir?: string };
+  kilo?: { enabled?: boolean; databasePath?: string; pollIntervalMs?: number; lookbackDays?: number; maxSessions?: number };
+  codex?: { enabled?: boolean; sessionsDir?: string; archivedSessionsDir?: string; pollIntervalMs?: number; lookbackDays?: number; maxFiles?: number };
   host: string;
   port: number;
   dataDir: string;
@@ -47,6 +49,13 @@ export function loadConfig(): Config {
   if (process.env.AGENT_MONITOR_PORT) cfg.port = Number(process.env.AGENT_MONITOR_PORT);
   if (process.env.AGENT_MONITOR_DATA) cfg.dataDir = process.env.AGENT_MONITOR_DATA;
   if (process.env.AGENT_MONITOR_CODEX_ENABLED === "0") cfg.codex = { ...cfg.codex, enabled: false };
+  if (process.env.AGENT_MONITOR_KILO_ENABLED === "0") cfg.kilo = { ...cfg.kilo, enabled: false };
+  if (!Array.isArray(cfg.allowedRoots) || !cfg.allowedRoots.every((r) => typeof r === "string")) {
+    throw new Error("allowedRoots must be an array of strings");
+  }
+  if (!Number.isInteger(cfg.port) || cfg.port < 1 || cfg.port > 65535) {
+    throw new Error(`port must be an integer between 1 and 65535, got ${cfg.port}`);
+  }
   cfg.allowedRoots = cfg.allowedRoots.map((r) => resolve(r));
   if (cfg.billingMode !== "subscription" && cfg.billingMode !== "api") {
     throw new Error(`billingMode must be "subscription" or "api", got ${cfg.billingMode}`);
@@ -59,7 +68,10 @@ export function loadConfig(): Config {
 // Lives in the data dir so the hook forwarder can read it.
 export function loadToken(dataDir: string): string {
   const f = join(dataDir, "token");
-  if (existsSync(f)) return readFileSync(f, "utf8").trim();
+  if (existsSync(f)) {
+    const existing = readFileSync(f, "utf8").trim();
+    if (existing.length >= 32) return existing; // empty/truncated files are regenerated
+  }
   const t = randomBytes(24).toString("hex");
   writeFileSync(f, t, { mode: 0o600 });
   return t;

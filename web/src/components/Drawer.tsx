@@ -155,7 +155,7 @@ export function Drawer({ agentId, interactionId, onClose }: { agentId: string; i
                 <dt>Source</dt><dd><SourceBadge session={session} /></dd>
                 <dt>Runtime session</dt><dd className="mono">{session.runtimeSessionId ?? "Unknown"}</dd>
                 <dt>Auth source</dt><dd>{session.authSource ?? "Unknown"}</dd>
-                <dt>Runtime</dt><dd>{session.source === "codex-local" ? "Codex (local observation)" : `Claude Code ${session.claudeCodeVersion ?? "Unknown version"}`}</dd>
+                <dt>Runtime</dt><dd>{session.source === "kilo-local" ? "Kilo CLI (local observation)" : session.source === "codex-local" ? "Codex (local observation)" : `Claude Code ${session.claudeCodeVersion ?? "Unknown version"}`}</dd>
                 <dt>Permission mode</dt><dd>{session.permissionMode ?? "Unknown"}</dd>
                 <dt>Working dir</dt><dd className="mono">{session.cwd}</dd>
               </dl>

@@ -10,7 +10,13 @@ try {
 $pidFile = "$root\data\server.pid"
 if (Test-Path $pidFile) {
   $p = Get-Content $pidFile
-  if (Get-Process -Id $p -ErrorAction SilentlyContinue) { Stop-Process -Id $p -Force; Write-Host "Stopped process $p." }
+  if (Get-Process -Id $p -ErrorAction SilentlyContinue) {
+    # Only kill the process if it is really this server (a stale pid may have been reused).
+    $info = Get-CimInstance Win32_Process -Filter "ProcessId = $p" -ErrorAction SilentlyContinue
+    if ($info -and $info.Name -match '^node(\.exe)?$' -and $info.CommandLine -match 'server[\/]index\.ts') {
+      Stop-Process -Id $p -Force; Write-Host "Stopped process $p."
+    } else { Write-Host "PID $p is not the Agent Monitor server; skipping kill and removing stale pid file." }
+  }
   Remove-Item $pidFile -ErrorAction SilentlyContinue
 }
 Write-Host "Agent Monitor stopped."

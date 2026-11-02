@@ -3,6 +3,7 @@ import type {
   Agent, EventRow, Interaction, InteractionResponse, Project, ServerInfo, Session, Snapshot,
   StartSessionRequest, StreamMessage, Task, UsageRecord,
   WidgetUsageSnapshot,
+  ArchiveResult,
 } from "../../shared/types";
 
 export interface Bootstrap {
@@ -53,6 +54,8 @@ export const sendSessionMessage = (id: string, text: string) =>
   call<unknown>("POST", `/api/sessions/${encodeURIComponent(id)}/message`, { text });
 export const cancelSession = (id: string) => call<unknown>("POST", `/api/sessions/${encodeURIComponent(id)}/cancel`, {});
 export const endSession = (id: string) => call<unknown>("POST", `/api/sessions/${encodeURIComponent(id)}/end`, {});
+export const archiveSession = (id: string, lastEventAt: number) => call<ArchiveResult>("POST", `/api/sessions/${encodeURIComponent(id)}/archive`, { lastEventAt });
+export const archiveJob = (id: string) => call<ArchiveResult>("GET", `/api/vscode/jobs/${encodeURIComponent(id)}`);
 export const patchProject = (id: string, patch: { name?: string; objective?: string | null }) =>
   call<Project>("PATCH", `/api/projects/${encodeURIComponent(id)}`, patch);
 

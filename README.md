@@ -26,9 +26,13 @@ The sibling Usage-Widget supplies the original icon and account-usage readers. U
 
 The right-hand **AI Usage** panel reuses Usage-Widget's existing readers: Claude and Codex session/weekly limits and reset times, elapsed-time ticks, and Kilo seven-day tokens. It refreshes every two minutes and retains the last good reading on errors. Credentials remain in the backend/Python reader and are never sent to the web interface. The original standalone Usage-Widget files, details and security popups are preserved.
 
+Claude's **Credits: £…** line beneath Weekly shows the prepaid usage-credit balance, not the remaining monthly spend limit. The monitor reads the same read-only prepaid endpoint found in the installed Claude client; this is an undocumented compatibility interface and may change. If only the balance read fails, the last good balance is labelled **last known**; without a previous balance it shows **Credits: unavailable**. Existing quota windows remain usable.
+
+Monetary displays use GBP. USD amounts are converted using [Frankfurter's daily reference rate](https://frankfurter.dev/), cached locally for 24 hours with its source date shown in the sidebar. The public rate request contains only currency codes, never account data or provider headers. Conversion is an indicative GBP equivalent, not a card/bank settlement rate. If no rate can be obtained, USD costs show **GBP unavailable** rather than relabelling dollars as pounds. Kilo stays tokens-only. Run `npm run test:usage-bridge` for synthetic Python reader tests. Backend changes require a backend restart; closing the desktop window alone leaves that backend running. Web-only changes need a Window → Refresh or reopening the window; no executable rebuild is needed.
+
 The backend remains available at `http://127.0.0.1:4317` if a browser view is useful. Live sessions and allowance bars are separate: token totals in agent panels are session history, while the sidebar shows account allowances.
 
-Everything runs locally. There are no accounts and no cloud services. The dashboard makes **no model calls** for rendering, event processing, progress or notifications, and it has no AI summaries.
+The dashboard and persistence run locally with no separate monitor account. Allowance and prepaid-credit readers contact the providers using existing local sign-ins; GBP conversion fetches a public exchange rate. The dashboard makes **no model calls** for rendering, event processing, progress or notifications, and it has no AI summaries.
 
 ## Claude Code sessions
 
@@ -180,3 +184,26 @@ Layout: `server/` holds the backend. Adapters live in `hooks-adapter.ts` (observ
 ## Clear old sessions from the display
 
 Click **Clear finished** in the top bar to hide finished or idle sessions in the selected project, including their old requests and usage. Active agents are kept visible. This only changes the display in this browser, persists across refresh/restart, and preserves history. **Show cleared** restores them; new session activity also makes them visible again.
+
+### Kilo CLI session observation
+
+The read-only Kilo watcher polls `~/.local/share/kilo/kilo.db` every two seconds. It imports session/model/state metadata and attributable child sessions under `allowedRoots`. The header reports watching, unavailable or disabled; Kilo panels use the Kilo logo and read-only labels. Questions, permissions and messages remain in Kilo. No prompts, reasoning, tool arguments, outputs or session titles are imported. Token totals remain in the existing usage sidebar.
+
+Configure `kilo: { enabled, databasePath, pollIntervalMs, lookbackDays, maxSessions }` in the monitor config; defaults are enabled, two seconds, seven days and 100 sessions (capped at 500). Set `AGENT_MONITOR_KILO_ENABLED=0` to disable. This observes the CLI SQLite format, not VS Code extension storage. Finished assistant messages become idle; unfinished activity older than `staleAfterMs` becomes interrupted with an unknown-state explanation. Database records cannot prove that a process is still running or waiting for approval. Archived sessions end. Unsupported/missing/busy databases report unavailable without exposing database errors.
+
+### Clear finished: save conversation, close its tab, keep history
+
+**Clear finished** now exports each eligible session's complete available user/assistant text from the original local transcript, verifies the saved file, asks the VS Code companion to close its associated editor tab, and then hides successful sessions. Original agent history is kept. Sessions whose original transcript no longer exists are hidden with a note that nothing was saved. Codex sessions with no log activity for 6 hours are treated as interrupted so they can be cleared. Active sessions, failed vault writes, changed conversations and open tabs that cannot be identified remain visible. A saved session with no possibly-matching open tab (no Codex tab with its ID; no unlinked Claude/Kilo chat tab) is hidden, since there is nothing to close with a per-session explanation. Unavailable companions time out after 30 seconds; already saved notes are kept and retries reuse identical notes.
+
+Notes go to `AIWorkspace/Brain/AI History/Monitor Archives/<provider>/` by default. Configure `archiving.vaultPath` to select another existing vault, `archiving.claudeProjectsDir` for Claude transcript storage, and `codex.archivedSessionsDir` for relocated archived Codex logs. Notes are immutable and content-addressed: manual edits and imported history are never overwritten. User/assistant text is not summarised or truncated. Private reasoning, system messages, raw tool logs and binary attachments are excluded; common credential formats are redacted. Codex/Kilo worker conversations are included; an unavailable worker transcript prevents clearing the session. The archive reflects what is available in local logs, not messages already removed by the source agent.
+
+Install the local VS Code companion (no marketplace or account required):
+
+```powershell
+python scripts/package-vscode-companion.py
+code --install-extension "dist/agent-monitor-companion.vsix" --force
+```
+
+Reload VS Code once after installation and refresh Agent Monitor. Codex custom editor tabs are matched by exact session URI. For a dedicated Claude or Kilo editor tab, run **Agent Monitor: Link This Chat Tab to a Session** from the Command Palette and choose its exact session ID before clearing. These providers do not expose a session ID through the public VS Code tab API; the explicit link supplies that identity. Links are forgotten when the tab changes, closes, or VS Code reloads. Relink if you switch conversations inside a webview. Sidebars, terminals and shared Kilo Agent Manager views are not closed; use a dedicated chat editor tab instead. Dirty tabs and unrelated tabs are left alone. The companion never runs provider-wide "close all" or deletes history.
+
+If discovery fails, set **Agent Monitor: Root** in VS Code settings to the monitor repository path. Custom runtime `AGENT_MONITOR_CONFIG`/port/data environment overrides must also be reflected in the repository's configuration for the companion to connect. Managed Claude sessions run inside the monitor rather than VS Code: after saving they are ended and hidden without a tab-close request. Archive/close endpoints use the same local authentication and origin checks as other state-changing operations. A source/receipt recheck immediately before granting the close request prevents closing a session that resumed during export; changes after that instant remain subject to the usual observer/polling delay.

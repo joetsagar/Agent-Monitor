@@ -6,6 +6,8 @@ import { APP_ROOT, loadConfig, loadToken } from "./config.ts";
 import { openDb } from "./db.ts";
 import { Store } from "./store.ts";
 import { HooksAdapter } from "./hooks-adapter.ts";
+import { KiloAdapter } from "./kilo-adapter.ts";
+import { ArchiveService } from "./archive-service.ts";
 import { CodexAdapter } from "./codex-adapter.ts";
 import { WidgetUsageService } from "./widget-usage.ts";
 import { ApiError, ManagedAdapter } from "./managed-adapter.ts";
@@ -22,6 +24,8 @@ const hooks = new HooksAdapter(store, cfg);
 const managed = new ManagedAdapter(store, cfg);
 managed.reconcileOnStartup();
 const codex = new CodexAdapter(store, cfg);
+const kilo = new KiloAdapter(store, cfg);
+const archives = new ArchiveService(store, cfg);
 const widgetUsage = new WidgetUsageService();
 
 const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
@@ -45,7 +49,9 @@ async function readBody(req: IncomingMessage, limit = 2_000_000): Promise<any> {
     chunks.push(c as Buffer);
   }
   if (n === 0) return {};
-  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new ApiError(400, "invalid JSON"); }
+  let parsed: unknown;
+  try { parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new ApiError(400, "invalid JSON"); }
+  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
 }
 
 // DNS-rebinding and cross-site protection. Every request must target a
@@ -59,7 +65,9 @@ function checkRequest(req: IncomingMessage, write: boolean, url: URL): void {
   if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none" && !(origin && allowedOrigins.has(origin))) throw new ApiError(403, "cross-site request blocked");
   const needsToken = write || url.pathname.startsWith("/api/") && url.pathname !== "/api/bootstrap" && url.pathname !== "/api/health";
   if (needsToken) {
-    const t = String(req.headers["x-agent-monitor-token"] ?? url.searchParams.get("token") ?? "");
+    // Query token only for the SSE stream (EventSource can't set headers).
+    const queryOk = url.pathname === "/api/stream" && !write;
+    const t = String(req.headers["x-agent-monitor-token"] ?? (queryOk ? url.searchParams.get("token") : null) ?? "");
     if (!t || !safeEq(t, token)) throw new ApiError(401, "missing or invalid token");
   }
 }
@@ -107,10 +115,39 @@ const server = createServer(async (req, res) => {
       return send(res, 202, hooks.ingest(body));
     }
     let m: RegExpMatchArray | null;
+    if (p === "/api/vscode/pending" && method === "GET") return send(res, 200, archives.pending());
+    if ((m = p.match(/^\/api\/vscode\/jobs\/([\w-]+)\/(claim|ack)$/)) && method === "POST") {
+      const body = await readBody(req);
+      if (typeof body.clientId !== "string") throw new ApiError(400, "clientId required");
+      const ok = m[2] === "claim" ? await archives.claim(m[1], body.clientId) : typeof body.closed === "boolean" && archives.acknowledge(m[1], body.clientId, body.closed, body.noTab === true);
+      return send(res, ok ? 200 : 409, { ok });
+    }
+    if ((m = p.match(/^\/api\/vscode\/jobs\/([\w-]+)$/)) && method === "GET") {
+      const result = archives.result(m[1]);
+      return send(res, result ? 200 : 404, result ?? { error: "Archive job not found; retry Clear finished" });
+    }
+    if ((m = p.match(/^\/api\/sessions\/([^/]+)\/archive$/)) && method === "POST") {
+      const body = await readBody(req);
+      if (typeof body.lastEventAt !== "number" || !Number.isFinite(body.lastEventAt)) throw new ApiError(400, "lastEventAt required");
+      try {
+        const id = decodeURIComponent(m[1]);
+        const result = await archives.archive(id, body.lastEventAt);
+        if (store.sessions.get(id)?.source === "managed") {
+          try { managed.end(id); } catch (e) { if (!(e instanceof ApiError && e.status === 409)) throw e; }
+        }
+        return send(res, 200, result);
+      } catch (e) {
+        const message = e instanceof Error && /^(Session |Transcript |Original conversation |No conversation |Kilo transcript |Archive |Too many transcript)/.test(e.message)
+          ? e.message : "Could not read and verify the full conversation in the vault; nothing cleared";
+        throw new ApiError(409, message);
+      }
+    }
     if ((m = p.match(/^\/api\/agents\/([^/]+)\/events$/)) && method === "GET") {
       const id = decodeURIComponent(m[1]);
+      const rawLimit = Number(url.searchParams.get("limit") ?? 300);
+      const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 300;
       if (!store.agents.has(id)) throw new ApiError(404, "agent not found");
-      return send(res, 200, store.eventsForAgent(id, Math.min(Number(url.searchParams.get("limit") ?? 300), 2000), url.searchParams.get("children") === "1"));
+      return send(res, 200, store.eventsForAgent(id, Math.min(limit, 2000), url.searchParams.get("children") === "1"));
     }
     if ((m = p.match(/^\/api\/interactions\/([^/]+)\/respond$/)) && method === "POST") {
       const body = await readBody(req) as { response: InteractionResponse; clientRequestId?: string };
@@ -142,11 +179,13 @@ const server = createServer(async (req, res) => {
 
     // Static UI (built). Paths are confined to web/dist.
     if (method !== "GET") throw new ApiError(405, "method not allowed");
+    let decoded: string;
+    try { decoded = decodeURIComponent(p); } catch { throw new ApiError(400, "malformed path"); }
     if (!existsSync(webDist)) {
       res.writeHead(200, { "content-type": "text/plain" });
       return res.end("UI not built. Run: npm run build (or npm run dev for the Vite dev server on :5173)");
     }
-    let file = resolve(webDist, "." + decodeURIComponent(p));
+    let file = resolve(webDist, "." + decoded);
     if (!file.startsWith(webDist + sep) && file !== webDist) throw new ApiError(403, "forbidden");
     if (!existsSync(file) || statSync(file).isDirectory()) file = join(webDist, "index.html");
     res.writeHead(200, {
@@ -166,6 +205,7 @@ const server = createServer(async (req, res) => {
 const pidFile = join(cfg.dataDir, "server.pid");
 server.listen(cfg.port, cfg.host, () => {
   codex.start();
+  kilo.start();
   if (process.env.AGENT_MONITOR_WIDGET_USAGE_ENABLED !== "0") widgetUsage.start();
   writeFileSync(pidFile, String(process.pid));
   console.log(`Agent Monitor listening on http://${cfg.host}:${cfg.port}  (billing mode: ${cfg.billingMode}; data: ${cfg.dataDir})`);
@@ -173,6 +213,7 @@ server.listen(cfg.port, cfg.host, () => {
 
 function shutdown() {
   codex.stop();
+  kilo.stop();
   widgetUsage.stop();
   console.log("Shutting down; ending managed runtime processes");
   managed.shutdown();
