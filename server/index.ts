@@ -8,6 +8,7 @@ import { Store } from "./store.ts";
 import { HooksAdapter } from "./hooks-adapter.ts";
 import { KiloAdapter } from "./kilo-adapter.ts";
 import { ArchiveService } from "./archive-service.ts";
+import { ClearService } from "./clear-service.ts";
 import { CodexAdapter } from "./codex-adapter.ts";
 import { WidgetUsageService } from "./widget-usage.ts";
 import { ApiError, ManagedAdapter } from "./managed-adapter.ts";
@@ -26,6 +27,7 @@ managed.reconcileOnStartup();
 const codex = new CodexAdapter(store, cfg);
 const kilo = new KiloAdapter(store, cfg);
 const archives = new ArchiveService(store, cfg);
+const clearer = new ClearService(store, archives, hooks);
 const widgetUsage = new WidgetUsageService();
 
 const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
@@ -112,6 +114,11 @@ const server = createServer(async (req, res) => {
       const sid = body?.payload?.session_id;
       // A managed session that also loads user hooks must not appear twice.
       if (typeof sid === "string" && managed.isManagedRuntimeSession(sid)) return send(res, 202, { accepted: true, ignored: "managed session" });
+      // /clear in Claude Code: archive everything, wipe the monitor, then show the new chat.
+      if (clearer.isTrigger(body)) {
+        const r = await clearer.run(Number.isFinite(body.ts) ? Number(body.ts) : Date.now());
+        console.log(`/clear: archived ${r.archived}, removed ${r.removed} session(s), kept ${r.kept}${r.failed.length ? `; archive failed for ${r.failed.length}: ${r.failed.join(" | ")}` : ""}`);
+      }
       return send(res, 202, hooks.ingest(body));
     }
     let m: RegExpMatchArray | null;

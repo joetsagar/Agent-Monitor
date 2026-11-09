@@ -37,10 +37,15 @@ export class Store {
   interactions = new Map<string, Interaction>();
   usage = new Map<string, UsageRecord>();
   server: ServerInfo;
+  // Clear watermark (epoch ms): observers and hooks ignore anything older, so
+  // history cannot come back after a /clear (restart, Codex/Kilo rescans, late hooks).
+  clearedAt = 0;
 
   constructor(db: DatabaseSync, server: ServerInfo) {
     this.db = db;
     this.server = server;
+    const mark = db.prepare("SELECT value FROM meta WHERE key='clearedAt'").get() as { value: string } | undefined;
+    this.clearedAt = mark ? Number(mark.value) || 0 : 0;
     const rows = db.prepare("SELECT kind, data FROM entities").all() as { kind: Kind; data: string }[];
     for (const r of rows) {
       const v = JSON.parse(r.data);
@@ -262,6 +267,41 @@ export class Store {
         if (s.runtimeState === "running") this.patchSession(s.id, { runtimeState: "interrupted" });
       }
     }
+  }
+
+  // Wipes all agent information (sessions, agents, tasks, requests, usage, events)
+  // and raises the watermark to `at`. Kept: sessions for which `keep` is true and
+  // sessions with activity at or after `at` (genuinely live), plus user-set project objectives.
+  clearAll(at: number, keep: (s: Session) => boolean = () => false): { removed: number; kept: number } {
+    const survivors = new Set<string>();
+    for (const s of this.sessions.values()) if (s.lastEventAt >= at || keep(s)) survivors.add(s.id);
+    const drop = [...this.sessions.keys()].filter((id) => !survivors.has(id));
+    const dropSet = new Set(drop);
+    const del = (kind: Kind, map: Map<string, { sessionId?: string; id: string }>, owned: (v: { sessionId?: string; id: string }) => boolean) => {
+      for (const [id, v] of [...map]) if (owned(v)) { map.delete(id); this.db.prepare("DELETE FROM entities WHERE kind=? AND id=?").run(kind, id); }
+    };
+    this.db.exec("BEGIN");
+    try {
+      del("session", this.sessions as Map<string, any>, (v) => dropSet.has(v.id));
+      for (const [kind, map] of [["agent", this.agents], ["task", this.tasks], ["interaction", this.interactions], ["usage", this.usage]] as const) {
+        // Records with no session (e.g. account-level usage) are also agent information.
+        del(kind, map as Map<string, any>, (v) => !v.sessionId || dropSet.has(v.sessionId) || !this.sessions.has(v.sessionId));
+      }
+      const keepProjects = new Set([...this.sessions.values()].map((s) => s.projectId));
+      for (const [id, p] of [...this.projects]) {
+        if (keepProjects.has(id) || p.objective) continue;
+        this.projects.delete(id); this.db.prepare("DELETE FROM entities WHERE kind='project' AND id=?").run(id);
+      }
+      const delEv = this.db.prepare("DELETE FROM events WHERE session_id=?"), delAt = this.db.prepare("DELETE FROM attempts WHERE session_id=?");
+      for (const id of drop) { delEv.run(id); delAt.run(id); }
+      // Orphans from sessions already gone.
+      this.db.exec("DELETE FROM events WHERE ts < " + Math.floor(at) + " AND session_id NOT IN (SELECT id FROM entities WHERE kind='session')");
+      this.clearedAt = at;
+      this.db.prepare("INSERT INTO meta(key,value) VALUES('clearedAt',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(at));
+      this.db.exec("COMMIT");
+    } catch (e) { this.db.exec("ROLLBACK"); throw e; }
+    this.emit({ type: "snapshot", data: this.snapshot() });
+    return { removed: drop.length, kept: survivors.size };
   }
 
   setServer(patch: Partial<ServerInfo>) {

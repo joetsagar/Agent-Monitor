@@ -35,6 +35,10 @@ export function openDb(dataDir: string): DatabaseSync {
     CREATE INDEX IF NOT EXISTS events_agent ON events(agent_id, ts);
     CREATE INDEX IF NOT EXISTS events_milestone ON events(milestone, ts);
     CREATE INDEX IF NOT EXISTS events_tool ON events(tool_use_id);
+    CREATE TABLE IF NOT EXISTS meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS attempts (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,

@@ -17,8 +17,10 @@ export class ArchiveService {
   private busy = new Set<string>();
   private proofs = new Map<string, { session: Session; identities: string[]; hash: string }>();
   constructor(store: Store, cfg: Config) { this.store = store; this.cfg = cfg; }
-  quiet(id: string, expected: number): Session {
+  quiet(id: string, expected: number, force = false): Session {
     const s = this.store.sessions.get(id);
+    // force (the /clear path) archives whatever the transcript holds right now, even mid-turn.
+    if (force && s) return s;
     if (!s || s.lastEventAt !== expected || !["idle", "ended", "failed", "interrupted", "cancelled"].includes(s.runtimeState) ||
       [...this.store.agents.values()].some(a => a.sessionId === id && ["working", "waiting", "blocked"].includes(a.status)) ||
       [...this.store.interactions.values()].some(i => i.sessionId === id && i.kind !== "review" && ["pending", "delivering"].includes(i.status))) {
@@ -26,11 +28,12 @@ export class ArchiveService {
     }
     return s;
   }
-  async archive(id: string, expected: number): Promise<ArchiveResult> {
+  async archive(id: string, expected: number, opts: { force?: boolean; closeTab?: boolean } = {}): Promise<ArchiveResult> {
+    const force = opts.force === true, closeTab = opts.closeTab !== false;
     if (this.busy.has(id)) throw new Error("Session archive is already in progress");
     this.busy.add(id);
     try {
-      const session = { ...this.quiet(id, expected) };
+      const session = { ...this.quiet(id, expected, force) };
       let root;
       try { root = await readConversation(session, this.cfg); }
       catch (e) {
@@ -49,12 +52,12 @@ export class ArchiveService {
           catch (e) { if (!(e instanceof Error) || !e.message.startsWith("Original conversation transcript not found")) throw e; }
         }
       }
-      this.quiet(id, expected);
+      this.quiet(id, expected, force);
       const archivePath = await saveConversation(session, this.cfg, conversations);
-      this.quiet(id, expected);
-      const result: ArchiveResult = { sessionId: id, lastEventAt: expected, archivePath, closeStatus: session.source === "managed" ? "not_applicable" : "pending",
-        message: session.source === "managed" ? "Conversation saved; this session is hosted by the monitor, not a VS Code tab." : "Conversation saved. Waiting for the VS Code companion to close the linked tab." };
-      if (session.source !== "managed") {
+      this.quiet(id, expected, force);
+      const result: ArchiveResult = { sessionId: id, lastEventAt: expected, archivePath, closeStatus: session.source === "managed" || !closeTab ? "not_applicable" : "pending",
+        message: !closeTab ? "Conversation saved to the vault by /clear." : session.source === "managed" ? "Conversation saved; this session is hosted by the monitor, not a VS Code tab." : "Conversation saved. Waiting for the VS Code companion to close the linked tab." };
+      if (session.source !== "managed" && closeTab) {
         // One pending close per version. A retry can target a newly linked tab.
         for (const [key, job] of this.jobs) if (job.sessionId === id) { this.jobs.delete(key); this.proofs.delete(key); }
         const job: CloseJob = { id: randomUUID(), sessionId: id, runtimeSessionId: session.runtimeSessionId!, source: session.source, cwd: session.cwd,

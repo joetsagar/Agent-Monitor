@@ -161,7 +161,7 @@ export class CodexAdapter {
       rootId = next;
     }
     const ts = Date.parse(row.timestamp);
-    if (!Number.isFinite(ts)) return;
+    if (!Number.isFinite(ts) || ts < this.store.clearedAt) return; // history from before the last /clear
     const sid = `cx_${rootId}`;
     const rootMeta = this.metas.get(rootId) ?? meta;
     let session = this.store.sessions.get(sid);

@@ -45,6 +45,7 @@ export class KiloAdapter {
       const allowed = rows.filter(r => typeof r.directory === "string" && this.cfg.allowedRoots.some(root => within(r.directory, root)));
       const byId = new Map(allowed.map(r => [r.id, r]));
       for (const r of allowed) {
+        if (r.time_updated < this.store.clearedAt) continue; // history from before the last /clear (kept in byId for parent lookup)
         let root = r; const seen = new Set([r.id]);
         while (root.parent_id && byId.has(root.parent_id) && !seen.has(root.parent_id)) { root = byId.get(root.parent_id)!; seen.add(root.id); }
         // Never attach an unverified or out-of-scope parent.

@@ -26,11 +26,16 @@ export class HooksAdapter {
     this.cfg = cfg;
   }
 
-  ingest(body: { ts?: number; payload: HookPayload }): { accepted: boolean; duplicate?: boolean } {
+  // Called after a /clear wipe: forget delegations that belonged to wiped sessions.
+  reset() { this.pendingDelegations.clear(); }
+
+  ingest(body: { ts?: number; payload: HookPayload }): { accepted: boolean; duplicate?: boolean; ignored?: string } {
     const p = body.payload;
     if (!p || typeof p.session_id !== "string" || typeof p.hook_event_name !== "string") return { accepted: false };
     const ts = Number.isFinite(body.ts) ? Number(body.ts) : Date.now();
     const ev = p.hook_event_name;
+    // Late or replayed hooks from before the last /clear must not bring old sessions back.
+    if (ts < this.store.clearedAt) return { accepted: true, ignored: "before clear" };
     const dedupeKey = "hook:" + createHash("sha1").update(JSON.stringify([ev, p.session_id, p.agent_id ?? "", p.tool_use_id ?? "", ts, p.prompt_id ?? ""])).digest("hex");
     if (this.store.hasEvent(dedupeKey)) return { accepted: true, duplicate: true };
 

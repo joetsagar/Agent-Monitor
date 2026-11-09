@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/core.test.ts test/http.test.ts test/codex.test.ts test/kilo.test.ts test/archive.test.ts test/companion.test.cjs test/widget-usage.test.ts test/currency.test.ts test/config.test.ts test/install-hooks.test.ts && npm run test:usage-bridge",
+    "test": "node --test test/core.test.ts test/http.test.ts test/codex.test.ts test/kilo.test.ts test/archive.test.ts test/companion.test.cjs test/widget-usage.test.ts test/currency.test.ts test/config.test.ts test/install-hooks.test.ts test/clear.test.ts && npm run test:usage-bridge",
     "test:usage-bridge": "python -m unittest discover -s test -p test_usage_bridge.py",
     "build": "npm --prefix web run build",
     "dev": "npm --prefix web run dev"
